@@ -1,0 +1,416 @@
+HPUX - index  to study and read 
+HPUX indice para estudar e ler r 
+###############################################################
+INDEX 
+
+1. LVM 
+LVM (Logical Volume Management)
+2. Ignite Server - um Servidor q server para fazer backup imagem do vg00 ( rootvg in Linux) 
+3. NFS = Network File System 
+4. Patching 
+5. KIR = keeping it Running 
+   em Português bem explicito Para manter o sistemas a correr 
+6. Cluster do HPUX - Service guard 
+7. Network cmds 
+
+###############################################################
+1. LVM 
+LVM (Logical Volume Management)
+link
+https://www.casesup.com/category/knowledgebase/howtos/how-to-add-disk-to-a-vpar-and-extend-a-filesystem-online-on-hp-ux
+###############################################################
+1.112 - help page for LVM muito bom
+https://cmdref.net/os/hpux/lvm.html
+###############################################################
+1.1 add disk 
+Step 1: Check Luns 
+Get LUN ID from storege side.
+Step 2: Scan for the new  device 
+ioscan 
+#ioscan -kfNC disk
+#ioscan -funC disk
+
+# pvdisplay /dev/disk/disk10
+pvdisplay: Couldn't find the volume group to which
+physical volume "/dev/disk/disk10" belongs.
+pvdisplay: Cannot display physical volume "/dev/disk/disk10".
+
+# pvcreate /dev/rdisk/disk10
+Physical volume "/dev/rdisk/disk10" has been successfully created.
+
+Step 7: Extend VG
+# vgextend vgoracle /dev/disk/disk10
+Volume group "vgoracle" has been successfully extended.
+Volume Group configuration for /dev/vgoracle has been saved in /etc/lvmconf/vgoracle.conf
+
+Step 8: Extend LVM
+We performed extend operation for "oragg" logical volume(LVM). 
+Before start operation, we check that oragg LVM's Physical Extend (PE) size 320. 
+Every PE's size is 64 MB. So our LV size is almost "20480 MB". 
+We extend our LV's PE size from 320 to 5320. It means we extend LVM's size from "20480 MB" to "340480 MB"
+
+NOTA é preciso fazer contas para saber o valor do GB / MB 
+
+fazer 
+lvdisplay /dev/vgoracle/orag
+para ver qual o espaço em GB do LV/FS 
+
+lvcreate
+
+ lvcreate -L 1024  -n lv_BOLA /dev/vgBOLA
+ 
+ ls -ls /dev/vgBOLA/lv_BOLA ( 1GB) 
+ 
+ LV 
+ 
+ FS 
+ 
+ newfs -F vxfs -o largefiles /dev/vgBOLA/rlv_BOLA
+ 
+ 
+ newfs -F vxfs  /dev/vg??/lvol?? - erro no futuro e que FS fica limitado a 2G 
+
+
+
+ # mount -F vxfs -o largefiles,log,nodatainlog /dev/vgBOLA/lv_BOLA  /abola 
+ 
+# mkdir /abola 
+ vi /etc/fstab 
+ # mount -F vxfs -o largefiles,log,nodatainlog /dev/vgBOLA/lv_BOLA  /abola 
+ 
+# mount -F vxfs -o largefiles,log,nodatainlog /dev/vgBOLA/lv_BOLA  /abola 
+mount -a 
+
+
+lvextend 
+
+lvextend -L 2048 dev/vgBOLA/lv_BOLA
+ 
+
+vgcreate
+
+Step 9: Online Extend 
+To perform an online filesystem extend you should install OnlineJFS package. 
+You can get OnlineJFS package from HPE.
+  
+ This is another critical step that you need to be careful. 
+ First, check your lvdisplay output. You should write your LVM's  size (MB) after -b option. 
+ And also add your mount point to. In my case, my LVM's size (340480M) and also mount point is (/oragg)
+
+# fsadm -F vxfs -b 340480M /oragg
+UX:vxfs fsadm: INFO: V-3-25942: /dev/vgoracle/roragg size increased from 20971520 sectors to 348651520 sectors
+
+#bdf /oragg
+Filesystem kbytes used avail %used Mounted on
+/dev/vgoracle/oragg
+348651520 10923410 316620632 3% /oragg
+
+# swlist -l product |grep -i online
+AONLINEJFS B.05.01.03 OnlineJFS 5.0.1 Integration Product
+OnlineJFS01 5.0.31.7 Online features of the VxFS File System
+
+LVM in HPUX example: 
+in HPUX LVM I am able to create PV using single raw disk as below
+# pvcreate -f /dev/rdsk/c4t2d0
+But below is not working
+# pvcreate -f /dev/rdsk/c4t2d0 /dev/rdsk/c4t2d2 /dev/rdsk/c4t2d3
+How to create the PV using multiple raw disk in HPUX whereas 2nd command is working in Linux but not in HPUX plz help ?
+"Success is matter of law not luck, Make ur own & follow them -Shivkhera[You Can Win] "
+pvcreate , vgcreate, lvcreate, similiar to linux order 
+###############################################################
+2. Ignite Server - um Servidor q server para fazer backup imagem do vg00 ( rootvg in Linux) 
+###############################################################
+3. NFS = Network File System 
+from a single Server we can present a FS in others servers 
+###############################################################
+Definition: 
+Network File System (NFS) is a distributed file system protocol originally developed by Sun Microsystems (Sun) 
+in 1984,[1] allowing a user on a client computer to access files over a computer network much like local storage is accessed. 
+NFS, like many other protocols, builds on the Open Network Computing Remote Procedure Call (ONC RPC) system. 
+NFS is an open IETF standard defined in a Request for Comments (RFC), allowing anyone to implement the protocol.
+https://en.wikipedia.org/wiki/Network_File_System
+###############################################################
+all the cmds for NFS 
+###############################################################
+NFS Configuration
+display nfs shares	showmount -e localhost
+cat /etc/xtab
+create nfs share	/etc/rc.config.d/nfsconf (edit)
+/etc/exports (edit file & add share)
+exportfs -a
+uncreate nfs share	/etc/rc.config.d/nfsconf (edit)
+exportfs -au (unshare all)
+exportfs -u /home/vallep
+/etc/exports (edit file & remove file)
+nfs start	/sbin/init.d/nfs.core start
+/sbin/init.d/nfs.server start
+/sbin/init.d/nfs.client start
+nfs stop	/sbin/init.d/nfs.client stop
+/sbin/init.d/nfs.server stop
+/sbin/init.d/nfs.core stop
+nfs status	ps -ef|grep
+nfs reload	exportfs -a
+nfs performance	nfsstat
+###############################################################
+###############################################################
+4. Patching 
+
+swlist -l bundle | grep BUNDLE11i
+
+software list /depot/bundle BUNDLE11i
+
+swlist -l bundle | grep BUNDLE11i
+The version of BUNDLE11i should be B.11.23.0409.3. If version B.11.23.0408.1 is on your system, 
+you will still need to load HP-UX 11i v2 September 2004. See the "Obtaining the HP-UX 11i v2 September 2004 media" section 
+for details on obtaining media if needed, and also read the important notes in the two text boxes contained in this document 
+prior to updating to HP-UX 11i v2 September 2004. Note that once HP-UX 11i v2 September 2004 or later has been loaded, 
+it will include the patch you initially tried to select at the HPE Support Center. The patch redirected you to this web page. 
+There should be no further need to load this particular patch once HP-UX 11i v2 September 2004 or later is loaded.
+
+
+
+https://support.hpe.com/help/en/Content/productSupport/patch/patchingHpuxHelp.html
+
+BACKUP 
+OpenBackup method
+Word or expression	Definition
+FBACKUP	A command used to selectively back up files
+CPIO	Copy file archives in and out
+FTIO	Tool used to copy files to 9 track magnetic tape drive (faster tape I/O)
+TAR	Tape file archiver - Saves and restores archives of files on tape, disk or regular file
+DD	Convert, re-block, translate, and copy a (tape) file
+OMNIBACK/SERVER	An HPE product used to schedule and manage backups to multiple storage devices and optional multiple systems
+**
+DATA PROTECTOR
+	A backup solution that provides reliable data protection and high accessibility for your fast growing business data. Data Protector offers comprehensive backup and restore functionality
+OMNISTORAGE	Hierarchical Storage Management solution, using magnetic & optical disk libraries
+Veritas NetBackup	A heterogeneous backup and recovery solution designed to help reduce administration and hardware costs, by taking advantage of enterprise strength features, such as high performance synthetics, disk-based data protection, automated-disaster recovery, and desktop and laptop protection
+###############################################################
+5. KIR = keeping it Running 
+###############################################################
+6. Para manter o sistemas a correr 
+###############################################################
+7. Cluster do HPUX - Service guard 
+###############################################################
+8. Network cmds 
+###############################################################
+HP-UX networking related tools and commands
+https://www.cyberciti.biz/tips/hp-ux-networking-related-tools-and-commands.html
+
+exemplos 
+/etc/hosts 
+/etc/rc.config.d/netconf - config de network 
+	
+	SCRIPTS
+
+/etc/init.d/net start 
+ Use to start, stop network service
+ 
+ 
+ HPUX Commands
+(a) Display lan interface info:
+# lanscan
+
+(b) All in one lan configuration utility (lan0 is first Ethernet interface) to configure and view the system IP address:
+# ifconfig lan0 – Display IP info such as IP address netmask etc.
+# ifconfig lan0 up – Up network interface (allow traffic)
+# ifconfig lan0 down – Down network interactive (deny traffc)
+# ifconfig lan0 192.168.1.1 netmask 255.255.255.0 up – Setup/change IP adddress
+
+(c) Displaying host name
+# hostname
+
+(d) Arp administration (cache)
+# arp -a
+
+(e) Display routing table/info:
+# netstat -nr
+
+(f) Define new route:
+# route add default 192.168.1.254 1
+
+(g) HP’s LAN diagnostic tool
+# lanadmin
+
+(h) Test a remote host connectivity
+ping host.mycorp.com
+
+(i) Setup various lan properties, dns client, NIS client configuration etc using GUI tool:
+# sam
+# set_parms
+
+(j) Check dns connectivity:
+$ nslookup www.google.co.uk
+###############################################################
+See also
+How do I start hpux network service?
+HP-UX: How Do I configure the new Lan card configuration?
+link
+https://www.cyberciti.biz/tips/hp-ux-networking-related-tools-and-commands.html
+
+###############################################################
+###############################################################
+link dos comandos 
+index 
+HP Cluster "Service Guard" Commands - Serviceguard é o nome do cluster do OS HP-UX
+###############################################################
+1)Starting the Cluster:
+cmruncl 
+
+2)Stop/Halt entire cluster:
+cmhaltcl  -v
+(verbose) 
+
+You can use the -f option to force the cluster to halt even when packages are running. 
+You can use the command on any running node, for example:
+cmhaltcl -f -v 
+
+3)Check status of cluster:
+cmviewcl
+cmviewcl -v 
+
+4)Adding Previously Configured Nodes to a Running Cluster:
+
+Use the cmrunnode command to join one or more nodes to an already running cluster.
+
+Any node you add must already be a part of the cluster configuration. 
+The following example adds node umhpux9 to the cluster that was just started with only nodes ftsys9 and ftsys10.
+
+
+5)Removing Nodes from Participation in a Running Cluster:
+cmhaltnode -f -v umhpuxsg9
+Get current configuration
+cmgetconf - Get cluster or package configuration information:
+cmgetconf
+
+6)Managing Packages and Services:
+Starting a Package:
+Use the cmrunpkg command to run the package on a particular node, then use the cmmodpkg command to enable switching for the package. For example, to start a failover package:
+cmrunpkg -n nodename package_name
+cmrunpkg -n umhpux9 pkg1
+cmmodpkg -e pkg1
+###############################################################
+link
+http://www.unixmantra.com/2014/05/hp-cluster-service-guard-commands.html
+outro link
+http://encartalabs.com/hp/hp-serviceguard-training-course.php
+outro link3
+
+https://oeskb-kegeln-bowling.com/hp-serviceguard-cluster-70/
+
+cmrunnode -v umhpux9
+###############################################################
+###############################################################
+BOOKs + links
+###############################################################
+Re: Free e-books for HP-UX ?
+Hi
+
+The "Managing Systems and Workgroups Book" is a good guide to HP-UX 11 Sys Admin.
+You can also download pdf version.
+http://www.docs.hp.com/hpux/onlinedocs/5187-2216/5187-2216.html
+
+Also look at other documentation for HP-UX 11.x
+http://www.docs.hp.com/hpux/os/11.0/index.html#System%20Administration
+
+If you have a support contract you can also access the Sysetm Recovery Handbook which has some excellent chapters on most areas of Sys Admin:
+http://www2.itrc.hp.com/service/iv/node.do?node=prod%2FWW_Start%2FN1%7C16&admit=-1335382922+1090219040161+28353475
+
+Cheers
+###############################################################
+preciso de google hpux HPUX book for free 
+###############################################################
+HP-UX Cheat Sheet
+
+Rosseta stone 
+http://www.unixguide.net/unixguide.shtml
+
+###############################################################
+ver document //ver link 
+http://www.unixmantra.com/2013/04/hp-ux-cheat-sheet.html
+Book online
+https://docstore.mik.ua/manuals/hp-ux/en/5992-4580/index.html
+###############################################################
+###############################################################
+book online - podes fazer 
+download 
+
+https://www.filibeto.org/unix/hp-ux/lib/rel/11.31/admin-overview-5991-7436.pdf
+	
+TODOS OS LIVROS online 
+
+https://docstore.mik.ua/manuals/hp.html
+
+https://www.it-implementor.co.uk/category/operating-systems/hp-ux
+
+How to clone a LVM volume group
+http://wiki-ux.info/wiki/How_to_clone_a_LVM_volume_group
+
+###############################################################
+
+http://www.performance-workshop.org/documents/HPUX_Testing_WOPR2_Holt.pdf
+
+books
+http://h20331.www2.hp.com/hpsub/downloads/task_guide.pdf
+
+http://hpux.connect.org.uk/
+
+Bibliografia 
+
+HP-UX: HP CERTIFICATION SYSTEMS ADMINISTRATOR, EXAM HP0-A01
+Training Guide and Administrator's Reference, 3rd Edition
+by Asghar Ghori
+###############################################################
+
+Other Link
+https://cmdref.net/os/hpux/command/index.html
+Table of Contents
+HP-UX Commands Cheat Sheet
+Reference
+Hardware
+OS Information
+Network
+User
+Disk
+Storage
+Software
+Operation
+Service
+Note
+ICAP
+###############################################################
+other link all the cmds HP-UX
+https://www.unix.com/man-page-collection.php?code=301&os=hpux
+###############################################################
+
+last group of links 
+https://www.pdfdrive.com/search?q=hpux&pagecount=&pubyear=&searchin=&em=
+procura por hpux 
+donwload os livros - for future reference // para futura referencia 
+
+HP-UX 11i v3 release - last version for hpux 11.31 or 11.v3 - download please 
+https://www.pdfdrive.com/hp-ux-11i-v3-release-e57641177.html
+
+HPE Serviceguard Enterprise Cluster Master Toolkit User Guide 2016 
+https://www.pdfdrive.com/hpe-serviceguard-enterprise-cluster-master-toolkit-user-guide-e58121897.html
+
+https://www.pdfdrive.com/hp-serviceguard-toolkit-compatibility-matrix-hpux-and-linux-e40820195.html
+
+https://www.pdfdrive.com/setboot-whitepaper-for-hpux-11i-v3-e48742959.html
+
+https://www.pdfdrive.com/hpux-and-linux-e38058173.html
+
+https://www.pdfdrive.com/the-host-server-hpux-configuration-guide-e33672311.html
+
+https://www.pdfdrive.com/the-host-server-hpux-configuration-guide-e33672311.html
+
+https://www.pdfdrive.com/hp-ux-11i-v3-installation-and-update-guide-e34950832.html
+
+https://www.pdfdrive.com/building-disaster-recovery-serviceguard-solutions-using-metrocluster-with-continuous-access-for-e59265435.html
+
+https://www.pdfdrive.com/hpux-system-and-network-administration-i-e47136341.html
+
+os HW da HP 
+HP Integrity BL860c i2, BL870c i2 & BL890c i2 Server Blade User Service Guide
+https://www.pdfdrive.com/hp-integrity-bl860c-i2-bl870c-i2-bl890c-i2-server-blade-user-service-guide-e53090662.html
+
