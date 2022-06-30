@@ -1,0 +1,905 @@
+ServiceGuard for HPUX 
+Serviceguard stand up Notes:
+
+Important parts of the .ascii file.
+
+CLUSTER_NAME prod_sgcluster
+
+HOSTNAME_ADDRESS_FAMILY IPV4
+
+FIRST_CLUSTER_LOCK_VG /dev/vgsgpackagename
+
+## Is it safer to maybe use a dedicated SG Lock disk.
+
+NODE_NAME sgclusternode01
+
+NETWORK_INTERFACE lan900
+
+HEARTBEAT_IP 192.168.208.209
+
+NETWORK_INTERFACE lan901
+
+HEARTBEAT_IP 10.43.128.209
+
+# CLUSTER_LOCK_LUN
+
+FIRST_CLUSTER_LOCK_PV /dev/disk/disk20
+
+# Link Aggregate lan900 contains the following port(s): lan0,lan4
+
+# Warning: There are no standby network interfaces for lan900.
+
+# Link Aggregate lan901 contains the following port(s): lan8,lan12
+
+# Warning: There are no standby network interfaces for lan901.
+
+NODE_NAME sgclusternode02
+
+NETWORK_INTERFACE lan900
+
+HEARTBEAT_IP 192.168.209.98
+
+NETWORK_INTERFACE lan901
+
+HEARTBEAT_IP 10.43.128.210
+
+# CLUSTER_LOCK_LUN
+
+FIRST_CLUSTER_LOCK_PV /dev/disk/disk59
+
+MEMBER_TIMEOUT 14000000
+
+# Configuration/Reconfiguration Timing Parameters (microseconds).
+
+AUTO_START_TIMEOUT 600000000
+
+NETWORK_POLLING_INTERVAL 2000000
+
+NETWORK_FAILURE_DETECTION INOUT
+
+# NETWORK_AUTO_FAILBACK
+
+# When set to YES a recovery of the primary LAN interface will cause failback
+
+# from the standby LAN interface to the primary.
+
+# When set to NO a recovery of the primary LAN interface will do nothing and
+
+# the standby LAN interface will continue to be used until cmmodnet -e lanX
+
+# is issued for the primary LAN interface.
+
+NETWORK_AUTO_FAILBACK YES
+
+SUBNET 192.168.208.0
+
+IP_MONITOR ON
+
+POLLING_TARGET 192.168.208.1
+
+SUBNET 192.168.0.0
+
+IP_MONITOR OFF
+
+# Package Configuration Parameters.
+
+# Enter the maximum number of packages which will be configured in the cluster.
+
+# You can not add packages beyond this limit.
+
+# This parameter is required.
+
+MAX_CONFIGURED_PACKAGES 300
+
+You will want to make sure both nodes of the cluster are running and the volume group that the lock disks belongs to is cluster aware.
+
+NOTE: When standing up a one node cluster cmquerycl will remove lock disk configuration and a lock disk is not needed for such a configuration.
+
+cmrunnode #on each node
+
+vgchange –a n vgsgpackagename
+
+vgchange –c y vgsgpackagename
+
+cmquerycl -v -C prod_sgcluster.ascii -n sgclusternode01 -n sgclusternode02
+
+cmcheckconf -v -C prod_sgcluster.ascii
+
+cmapplyconf -v -C prod_sgcluster.ascii
+
+Cluster should look roughly like this:
+
+root@sgclusternode02:/root> cmviewcl
+
+CLUSTER STATUS
+
+prod_sgcluster up
+
+NODE STATUS STATE
+
+sgclusternode01 up running
+
+sgclusternode02 up running
+
+PACKAGE STATUS STATE AUTO_RUN NODE
+
+root@sgclusternode02:/root>
+
+Standing up your first package.
+
+Scenario assumes you are standing up a package named sgpackagename.
+
+mkdir –p /etc/cmcluster/packages/sgpackagename
+
+cd /etc/cmcluster/packages/sgpackagename
+
+Using your method of choice, copy in a package conference file and a task0 (external script to start Oracle. Choose your clone source carefully. Make sure you choose a working package to template. If you are standing up an SAP instance choose an SAP package to clone, sgpackagename is a standard database package and a better template candidate.
+
+Permissions may matter:
+
+oot@sgclusternode02:/etc/cmcluster/packages/sgpackagename> ll
+
+total 176
+
+-rw——- 1 root sys 71668 Dec 3 16:12 sgpackagename.conf
+
+-r-x—— 1 root sys 11005 Dec 9 11:35 task0
+
+root@sgclusternode02:/etc/cmcluster/packages/sgpackagename>
+
+Use the method of choice to modify your configuration files:
+
+Here is what needs to be changed ( In bold ):
+
+package_name sgpackagename
+
+package_description “sgpackagename Instance”
+
+package_type failover
+
+node_name sgclusternode01
+
+node_name sgclusternode02
+
+ip_subnet 192.168.208.0
+
+ip_address 192.168.209.48
+
+Change the bold values below for each file system.
+
+fs_name /dev/vgsgpackagename/oraarch
+
+fs_server “”
+
+fs_directory /data/oracle/sgpackagename/arch
+
+fs_type “vxfs”
+
+fs_mount_opt “-o ioerror=mwdisable,largefiles,delaylog,cio”
+
+fs_umount_opt “”
+
+fs_fsck_opt “”
+
+The actual data may vary. The fs_mount_opt are important and may change. The parameter cio is necessary for Oracle to have asynchronous I/O.
+
+external_script /etc/cmcluster/packages/sgpackagename/task0
+
+Create the mount points and change permission to oracle:dba. Again there are many ways to do this, your mileage may vary. You can check return codes if you are particularly precise, echo $?
+
+awk ‘/^fs_dir/{print $NF}’ sgpackagename.conf | while read –r mp
+
+do
+
+mkdir –p $mp
+
+ll –d $mp
+
+chown oracle:dba $mp
+
+ll –d $mp
+
+done
+
+Your final output from the ll –d command should look this
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/arch
+
+drwxr-xr-x 4 oracle dba 96 Dec 10 11:40 /data/oracle/sgpackagename/export
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/undo1
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/redo1
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/redo2
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/ctrl1
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/ctrl2
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/data1
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/index1
+
+drwxr-xr-x 4 oracle dba 96 Dec 10 13:59 /apps/oracle/sgpackagename
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/system
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/temp1
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/users
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/tools
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/fra
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/diag
+
+drwxr-xr-x 3 oracle dba 96 Dec 9 11:04 /data/oracle/sgpackagename/admin
+
+edit the task0 file
+
+function start_commmand
+
+su oracle -c “/apps/oracle/general/sh/change_backup_mode.ksh sgpackagename cold end”
+
+Note this section is different for SAP. Change the instance name.
+
+function stop_command
+
+#### Database startup script, normally created by dba#####
+
+su oracle -c “/apps/oracle/general/sh/change_backup_mode.ksh sgpackagename cold begin”
+
+Comment out (in bold) the start/stop code so first package run only stands up the filesystems:
+
+case ${1} in
+
+start)
+
+# start_command $*
+
+# exit_val=$?
+
+;;
+
+stop)
+
+# stop_command $*
+
+# exit_val=$?
+
+;;
+
+Detect your storage from storage system.
+
+ioscan –fnNC disk
+
+# detects the storage
+
+For this example we detected the following agile devices:
+
+disk59
+
+disk60
+
+disk61
+
+disk62
+
+disk63
+
+disk64
+
+disk65
+
+disk66
+
+get the EMC serial number of each of the disks and match it against the serial number list given to you by storage in the dashboard request.
+
+This is a bit tedious so I created a simple script for the job:
+
+dislev.ksh
+
+#!/usr/bin/ksh
+
+args=$#
+
+if [ $args -ne 1 ];then echo “1 argument last part of disk ex disk60”;exit 1;fi
+
+dv=$1
+
+diskinfo /dev/rdisk/${dv}
+
+ldev=$(/usr/bin/inq -nodots -sym_wwn | grep “$dv ” | grep -v rdsk |awk ‘{print $3}’ |awk ‘{print substr($0,length($0) – 3,length($0))}’);
+
+echo “LDEV is: ${ldev}”
+
+root@sgclusternode02:/root/shuffle> ./disldev.ksh disk59
+
+SCSI describe of /dev/rdisk/disk59:
+
+vendor: EMC
+
+product id: SYMMETRIX
+
+type: direct access
+
+size: 154176000 Kbytes
+
+bytes per sector: 512
+
+LDEV is: 4F2F
+
+The size is a reality check. You can also use inq utility to get the size. By using a second utility (diskinfo) this creates a natural double check. There are probably a dozen different right ways to complete this task.
+
+My disk list is kept for verification purposes in a text file root@sgclusternode02:/root/shuffle> cat request.610.dlist.txt
+
+610 is the request from the stand up rquest.
+
+awk ‘{print $NF}’ request.610.dlist.txt | while read –r dvn
+
+do
+
+pvcreate $dvn
+
+rc=$?
+
+echo “RC from pvcreate is ${rc}”
+
+done
+
+Create the volume group using LVM 2.2
+
+vgcreate –V <version number> -s <pe size> -S <Max size in TB> <volume group name> <disk list>
+
+vgcreate -V 2.2 -s 32 -S 2t vgsgpackagename /dev/disk/disk59 …. /dev/disk/disk66
+
+The next step is best scripted:
+
+<command> -n name –L <size in MB> <volume group name>
+
+lvcreate -n oraadmin -L 10000 vgsgpackagename
+
+echo $?
+
+newfs -F vxfs -o largefiles /dev/sgpackagename/roraadmin
+
+echo $?
+
+.. repeat for every file system defined in the storage dashboard request .. I have scripted this entire process based on dashboard input and will provide the script as an appendix.
+
+Volume group must be exported in preview mode:
+
+vgexport -v -s -p -m vgsgpackagename.map vgsgpackagename
+
+Use scp to copy the map file to the failover node
+
+On failover node:
+
+vgimport -v -s -N -m vgsgpackagename.map vgsgpackagename
+
+vgchange –a y vgsgpackagename
+
+vgdisplay –v vgsgpackagename (Look for logical volumes disks being correct)
+
+vgchange –a n vgsgpackagename
+
+vgchange –c y vgsgpackagename (Must be successful check return code $? )
+
+vgchange –c n vgsgpackagename
+
+On primary node (either will work but being consistent is helpful).
+
+vgchange –c y vgsgpackagename
+
+cd /etc/cmcluster/packages/sgpackagename
+
+cmcheckconf –P sgpackagename.conf
+
+(When all cmcheckconf issues are resolved)
+
+cmapplyconf –P sgpackagename.conf
+
+cmrunpckg –v –n <node_hostname> sgpackagename
+
+cmmodpkg –e sgpackagename
+
+cmviewcl (Look for your package to be running)
+
+Error logs live: /var/adm/cmcluster/log/<packagename>.log
+
+Setting up asynchronous I/O
+
+root@sat1hcmdb090:/root> getprivgrp
+
+global privileges: CHOWN
+
+dba: MLOCK
+
+getprivgroup is a display command use command:
+
+setprivgrp dba MLOCK
+
+Standing up your first package:
+
+Make sure you are in the directory: /etc/cmcluster/packages/sgpackagename
+
+root@sgclusternode02:/etc/cmcluster/packages/sgpackagename> cmcheckconf -P sgpackagename.conf
+
+cmcheckconf: Verification completed. No errors found.
+
+Use the cmapplyconf command to apply the configuration.
+
+root@sgclusternode02:/etc/cmcluster/packages/sgpackagename> cmapplyconf -P sgpackagename.conf
+
+One or more of the specified packages are running. Any error in the
+
+proposed configuration change could cause these packages to fail.
+
+Ensure configuration changes have been tested before applying them.
+
+Modify the package configuration ([y]/n)? y
+
+Completed the cluster update
+
+root@sgclusternode02:/etc/cmcluster/packages/sgpackagename> cmmodpkg -e sgpackagename
+
+cmmodpkg: Completed successfully on all packages specified
+
+root@sgclusternode02:/etc/cmcluster/packages/sgpackagename> cmviewcl -v
+
+CLUSTER STATUS
+
+prod_sgcluster up
+
+NODE STATUS STATE
+
+sgclusternode01 up running
+
+Cluster_Lock_LVM:
+
+VOLUME_GROUP PHYSICAL_VOLUME STATUS
+
+/dev/vgsgpackagename /dev/disk/disk20 up
+
+Network_Parameters:
+
+INTERFACE STATUS PATH NAME
+
+PRIMARY up LinkAgg0 lan900
+
+PRIMARY up LinkAgg1 lan901
+
+NODE STATUS STATE
+
+sgclusternode02 up running
+
+Cluster_Lock_LVM:
+
+VOLUME_GROUP PHYSICAL_VOLUME STATUS
+
+/dev/vgsgpackagename /dev/disk/disk59 up
+
+Network_Parameters:
+
+INTERFACE STATUS PATH NAME
+
+PRIMARY up LinkAgg0 lan900
+
+PRIMARY up LinkAgg1 lan901
+
+PACKAGE STATUS STATE AUTO_RUN NODE
+
+sgpackagename up running enabled sgclusternode02
+
+Policy_Parameters:
+
+POLICY_NAME CONFIGURED_VALUE
+
+Failover configured_node
+
+Failback manual
+
+Node_Switching_Parameters:
+
+NODE_TYPE STATUS SWITCHING NAME
+
+Primary up enabled sgclusternode01
+
+Alternate up enabled sgclusternode02 (current)
+
+Other_Attributes:
+
+ATTRIBUTE_NAME ATTRIBUTE_VALUE
+
+Style modular
+
+Priority no_priority
+
+Check that your file systems are mounted (About a dozen different ways to do this):
+
+root@sgclusternode02:/etc/cmcluster/packages/sgpackagename> bdf | grep sgpackagename
+
+102400000 91742 95913999 0% /data/oracle/sgpackagename/arch
+
+102400000 13178819 83644864 14% /data/oracle/sgpackagename/export
+
+102400000 91742 95913999 0% /data/oracle/sgpackagename/undo1
+
+10256384 20006 9596612 0% /data/oracle/sgpackagename/redo1
+
+10256384 20006 9596612 0% /data/oracle/sgpackagename/redo2
+
+10256384 20006 9596612 0% /data/oracle/sgpackagename/ctrl1
+
+10256384 20006 9596612 0% /data/oracle/sgpackagename/ctrl2
+
+307200000 141939 287866940 0% /data/oracle/sgpackagename/data1
+
+204800000 116841 191890469 0% /data/oracle/sgpackagename/index1
+
+20480000 3972498 15475861 20% /apps/oracle/sgpackagename
+
+10256384 20006 9596612 0% /data/oracle/sgpackagename/system
+
+102400000 91742 95913999 0% /data/oracle/sgpackagename/temp1
+
+10256384 20006 9596612 0% /data/oracle/sgpackagename/users
+
+10256384 20006 9596612 0% /data/oracle/sgpackagename/tools
+
+102400000 91742 95913999 0% /data/oracle/sgpackagename/fra
+
+10256384 20006 9596612 0% /data/oracle/sgpackagename/diag
+
+10256384 20006 9596612 0% /data/oracle/sgpackagename/admin
+
+root@sgclusternode02:/etc/cmcluster/packages/sgpackagename> mount | grep sgpackagename
+
+/data/oracle/sgpackagename/arch on /dev/vgsgpackagename/oraarch ioerror=mwdisable,largefiles,delaylog,cio,dev=80000002 on Mon Dec 9 11:41:17 2013
+
+/data/oracle/sgpackagename/export on /dev/vgsgpackagename/oraexport ioerror=mwdisable,largefiles,delaylog,cio,dev=80000009 on Mon Dec 9 11:41:17 2013
+
+/data/oracle/sgpackagename/undo1 on /dev/vgsgpackagename/oraundo1 ioerror=mwdisable,largefiles,delaylog,cio,dev=8000000c on Mon Dec 9 11:41:17 2013
+
+/data/oracle/sgpackagename/redo1 on /dev/vgsgpackagename/oraredo1 ioerror=mwdisable,largefiles,delaylog,cio,dev=80000005 on Mon Dec 9 11:41:17 2013
+
+/data/oracle/sgpackagename/redo2 on /dev/vgsgpackagename/oraredo2 ioerror=mwdisable,largefiles,delaylog,cio,dev=80000004 on Mon Dec 9 11:41:17 2013
+
+/data/oracle/sgpackagename/ctrl1 on /dev/vgsgpackagename/oractrl1 ioerror=mwdisable,largefiles,delaylog,cio,dev=80000006 on Mon Dec 9 11:41:18 2013
+
+/data/oracle/sgpackagename/ctrl2 on /dev/vgsgpackagename/oractrl2 ioerror=mwdisable,largefiles,delaylog,cio,dev=80000007 on Mon Dec 9 11:41:18 2013
+
+/data/oracle/sgpackagename/data1 on /dev/vgsgpackagename/oradata1 ioerror=mwdisable,largefiles,delaylog,cio,dev=80000003 on Mon Dec 9 11:41:18 2013
+
+/data/oracle/sgpackagename/index1 on /dev/vgsgpackagename/oraindex1 ioerror=mwdisable,largefiles,delaylog,cio,dev=80000008 on Mon Dec 9 11:41:18 2013
+
+/apps/oracle/sgpackagename on /dev/vgsgpackagename/orabin ioerror=mwdisable,largefiles,delaylog,nodatainlog,dev=80000001 on Mon Dec 9 11:41:18 2013
+
+/data/oracle/sgpackagename/system on /dev/vgsgpackagename/orasystem ioerror=mwdisable,largefiles,delaylog,cio,dev=8000000a on Mon Dec 9 11:41:18 2013
+
+/data/oracle/sgpackagename/temp1 on /dev/vgsgpackagename/oratemp1 ioerror=mwdisable,largefiles,delaylog,cio,dev=8000000b on Mon Dec 9 11:41:18 2013
+
+/data/oracle/sgpackagename/users on /dev/vgsgpackagename/orausers ioerror=mwdisable,largefiles,delaylog,cio,dev=8000000d on Mon Dec 9 11:41:18 2013
+
+/data/oracle/sgpackagename/tools on /dev/vgsgpackagename/oratools ioerror=mwdisable,largefiles,delaylog,cio,dev=8000000e on Mon Dec 9 11:41:19 2013
+
+/data/oracle/sgpackagename/fra on /dev/vgsgpackagename/orafra ioerror=mwdisable,largefiles,delaylog,cio,dev=8000000f on Mon Dec 9 11:41:19 2013
+
+/data/oracle/sgpackagename/diag on /dev/vgsgpackagename/oradiag ioerror=mwdisable,largefiles,delaylog,cio,dev=80000010 on Mon Dec 9 11:41:19 2013
+
+/data/oracle/sgpackagename/admin on /dev/vgsgpackagename/oraadmin ioerror=mwdisable,largefiles,delaylog,cio,dev=80000011 on Mon Dec 9 11:41:19 2013
+
+Conduct failover test (Pre-installation)
+
+root@sgclusternode02:/etc/cmcluster/packages/sgpackagename> cmhaltpkg -v sgpackagename
+
+Disabling automatic failover for failover packages to be halted.
+
+Halting package sgpackagename
+
+Successfully halted package sgpackagename
+
+One or more packages or package instances have been halted.
+
+The failover packages have AUTO_RUN disabled and no new instance can start automatically. To allow automatic start, enable AUTO_RUN via cmmodpkg -e <package_name>
+
+cmhaltpkg: Completed successfully on all packages specified
+
+root@sgclusternode02:/etc/cmcluster/packages/sgpackagename> cmviewcl
+
+CLUSTER STATUS
+
+prod_sgcluster up
+
+NODE STATUS STATE
+
+sgclusternode01 up running
+
+sgclusternode02 up running
+
+UNOWNED_PACKAGES
+
+PACKAGE STATUS STATE AUTO_RUN NODE
+
+sgpackagename down halted disabled unowned
+
+root@sgclusternode02:/etc/cmcluster/packages/sgpackagename> cmrunpkg -v -n sgclusternode01 sgpackagename
+
+Running package sgpackagename on node sgclusternode01
+
+Successfully started package sgpackagename on node sgclusternode01
+
+cmrunpkg: All specified packages are running
+
+root@sgclusternode02:/etc/cmcluster/packages/sgpackagename> cmviewcl
+
+CLUSTER STATUS
+
+prod_sgcluster up
+
+NODE STATUS STATE
+
+sgclusternode01 up running
+
+PACKAGE STATUS STATE AUTO_RUN NODE
+
+sgpackagename up running disabled sgclusternode01
+
+NODE STATUS STATE
+
+sgclusternode02 up running
+
+Re run your mount test on the node the package is now running on (see above).
+
+You may wish to leave package failover set to disabled to avoid surprises.
+
+Email your DBA give them the file system(s) to do installation. Flip the database dashboard request to “Application installation & configuration”
+
+Notify your IA/PM via email.
+
+Be prepared to run root.sh when your DBA needs it run.
+
+Steps after DBA completion
+
+Modify task 0 uncomment the 4 lines of code you commented.
+
+case ${1} in
+
+start)
+
+start_command $*
+
+exit_val=$?
+
+;;
+
+stop)
+
+stop_command $*
+
+exit_val=$?
+
+Check your package changes:
+
+cmcheckconf –P sgpackagename.conf
+
+cmapplyconf –P sgpackagename.conf
+
+Make sure backups are configured before the next step. Also have storage test DR backup of LUNS if applicable (Model and dev usually do not have DR).
+
+Re-run the failover tests. Check log files:
+
+/var/adm/cmcluster/log/sgpackagename.log
+
+Check database run status.
+
+ps –ef | grep sgpackagename
+
+Lessons learned:
+
+· DBA’s do not necessarily understand clustering. If they say the start/stop script works but you are getting errors in Serviceguard testing, ask them to check the return code (echo $?). Explain t the DBA that Serviceguard will not function correctly if it receives non-zero return codes.
+
+· Try not to modify task0 to default to zero return codes. This defeats the purpose of Serviceguard checking return codes.
+
+· Never run pvcreate –f (If you feel the need, deconstruct your volume group and use pvremve)
+
+· Never run cmdisklock -f reset <disk device>, this destroys all data on the lock disk and generally there is data on the lock disk. Note: Maybe a better design would be a dedicated lock disk.
+
+Appendix 1 Additional automation.
+
+This is optional, but making processes repeatable is important so you might like this.
+
+While validating the request on the storage dashboard, I noted (and slightly massaged) the data to make it machine (awk) readable. Scripts are local, I use them in /root/shuffle.
+
+root@sgclusternode02:/root/shuffle> cat request.610.data.txt
+
+sgclusternode01|NEW|/apps/oracle/sgpackagename | 20 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/arch | 100 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/data1 | 300 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/redo2 | 10 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/redo1 | 10 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/ctrl1 | 10 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/ctrl2 | 10 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/index1 | 200 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/export | 100 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/SYSTEM | 10 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/temp1 | 100 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/undo1 | 100 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/users | 10 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/tools | 10 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/fra | 100 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/diag | 10 GB
+
+sgclusternode01|NEW|/data/oracle/sgpackagename/admin | 10 GB
+
+The following script reads the earlier request.{request number}.dlist.txt file to get its device list, reads the data.txt file and completely automates the VG build including the map export.
+
+Script requires the instance name (not the vg name, it does that itself) and the request number from the dashboard. Use it or not, the choice is yours.
+
+#!/usr/bin/ksh
+
+args=$#
+
+if [ $args -ne 2 ];then echo “2 arguments instance name and request ### required”;exit 1;fi
+
+inn=$1
+
+vgn=”vg${inn}”
+
+req=$2
+
+disklist=”request.${req}.dlist.txt”
+
+actonreturn()
+
+{
+
+rcc=$1
+
+if [ $rcc -ne 0 ];then echo “FAIL FAIL $0 FAILED”; exit 1;fi
+
+}
+
+devl=””
+
+# pvcreate
+
+awk ‘{ print $1 }’ ${disklist} | while read -r dv
+
+do
+
+devr=”/dev/rdisk/${dv}”
+
+echo “pvcreate ${devr}”
+
+pvcreate ${devr}
+
+rc=$?
+
+echo “pvcreate rc:${rc}”
+
+actonreturn ${rc}
+
+devl=”$devl /dev/disk/${dv}”
+
+done
+
+#vgcreate -V 2.2 -s 32 -S 1t <vg name> disks in /dev/disk/disk### format
+
+echo “vgcreate -V 2.2 -s 32 -S 1t ${vgn} ${devl}”
+
+vgcreate -V 2.2 -s 32 -S 2t ${vgn} ${devl}
+
+rc=$?
+
+echo “vgcreate rc:${rc}”
+
+actonreturn ${rc}
+
+infile=”request.${req}.data.txt”
+
+if [ -f ${infile} ]
+
+then
+
+echo “- pass – file ${infile} found”
+
+else
+
+echo “- FAIL – file ${infile} MIA”
+
+exit 1
+
+fi
+
+fstabstub=fstab.${vgn}
+
+echo “##### New Oracle Instance vg ${vgn} ####” > ${fstabstub}
+
+innu=$(echo ${inn} | awk ‘{print toupper($0)}’);
+
+echo “Instance Name: ${inn} ${innu}”
+
+awk ‘{print}’ ${infile} | while read -r DL
+
+do
+
+# echo “Data Line ${DL}”
+
+mp=$(echo ${DL} | awk -F\| ‘{ print $3}’);
+
+# echo “mount point is ${mp}”
+
+mpszg=$(echo ${DL} | awk ‘{ print $3}’);
+
+mpszm=”${mpszg}000″
+
+# echo “mount point size in GB ${mpszg} in fake MB ${mpszm}”
+
+mpname=$(echo ${mp} | awk -F\/ ‘{print $NF}’);
+
+if [ “${mpname}” = “${innu}” ]
+
+then
+
+mpname=”orabin”
+
+else
+
+mpname=$(echo ${mpname} | awk ‘{print tolower($0)}’);
+
+mpname=”ora${mpname}”
+
+fi
+
+mkdir -p ${mp}
+
+chown oracle:dba ${mp}
+
+# echo “mount point name is ${mpname}”
+
+echo “lvcreate command is : lvcreate -n ${mpname} -L ${mpszm} ${vgn}”
+
+#### uncomment for realrun ###
+
+lvcreate -n ${mpname} -L ${mpszm} ${vgn}
+
+rc=$?
+
+actonreturn ${rc}
+
+echo “newfs command is : newfs -F vxfs -o largefiles /dev/${vgn}/r${mpname}”
+
+newfs -F vxfs -o largefiles /dev/${vgn}/r${mpname}
+
+rc=$?
+
+actonreturn ${rc}
+
+done
+
+vgexport -v -s -p -m ${vgn}.map ${vgn}
+
+
+link of the page 
+
+https://www.hpux.ws/?p=664
+
+wheb you go there sometimes... 
