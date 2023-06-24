@@ -1,2 +1,2 @@
 # HPUX
-HPUX lsit of notes for HPUX 
+HPUX List of notes for HPUX 
